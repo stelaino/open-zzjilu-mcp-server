@@ -1,0 +1,747 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "智在记录开放 API",
+    "description": "智在记录（zzjilu.com）开放平台 API 文档。\n\n## 认证方式\n在请求 Header 中添加 `Authorization: <API Key>`（无需 Bearer 前缀）。\nAPI Key 在 [开发者中心](https://zzjilu.com/pc/developer) 获取。\n\n## 限流策略\n全局限制：每秒最多 2 次调用。\n\n## 通用响应结构\n所有接口返回 `ApiResponse` 结构，`resultCode` 为 \"0\" 表示成功。",
+    "version": "1.0.0",
+    "contact": {
+      "name": "stelaino",
+      "url": "https://github.com/stelaino/open-zzjilu-mcp-server"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://openapi.zzjilu.com",
+      "description": "生产环境"
+    }
+  ],
+  "tags": [
+    { "name": "笔记接口", "description": "笔记的增删改查及状态管理" },
+    { "name": "auth 接口", "description": "认证与令牌管理" },
+    { "name": "team 接口", "description": "团队管理" },
+    { "name": "文件接口", "description": "文件上传与下载" },
+    { "name": "msg 接口", "description": "消息推送" },
+    { "name": "问小智 接口", "description": "问小智 AI 配置" }
+  ],
+  "paths": {
+    "/api/v1/note/queryNoteList": {
+      "post": {
+        "summary": "查询笔记列表",
+        "description": "获取用户笔记列表，支持模糊查询，支持分页。\n\n**注意**：noteType 参数名在原文档有 FteType 的标注错误，实测应使用 noteType。",
+        "operationId": "post_queryNoteList",
+        "tags": ["笔记接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string", "description": "标题（模糊匹配）" },
+                  "abstract": { "type": "string", "description": "摘要（模糊匹配）" },
+                  "summary": { "type": "string", "description": "总结（模糊匹配）" },
+                  "content": { "type": "string", "description": "内容（模糊匹配）" },
+                  "noteType": { "type": "string", "description": "笔记类型筛选", "enum": ["voice", "text", "image", "document", "link"] },
+                  "startTime": { "type": "string", "description": "开始时间（yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss）" },
+                  "endTime": { "type": "string", "description": "结束时间" },
+                  "pageNum": { "type": "integer", "description": "当前页码", "default": 1 },
+                  "pageSize": { "type": "integer", "description": "每页条数", "default": 100 },
+                  "withContent": { "type": "string", "description": "是否返回内容详情", "enum": ["true", "false"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/note/querySingleNoteDetail": {
+      "get": {
+        "summary": "查询笔记详情",
+        "description": "查询单条笔记信息，支持按笔记 ID 查询笔记详情。",
+        "operationId": "get_querySingleNoteDetail",
+        "tags": ["笔记接口"],
+        "parameters": [
+          { "name": "noteId", "in": "query", "description": "笔记 ID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/queryNoteStatus": {
+      "get": {
+        "summary": "查询笔记状态",
+        "description": "查询笔记处理进度。状态值：completed（已完成）、pending（处理中）、recognizing（转写中）、analyzing（总结中）、failed（失败）、\"null\"（笔记不存在）。",
+        "operationId": "get_queryNoteStatus",
+        "tags": ["笔记接口"],
+        "parameters": [
+          { "name": "noteId", "in": "query", "description": "笔记 ID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/createNote": {
+      "post": {
+        "summary": "创建笔记",
+        "description": "创建新笔记，支持 text/link/voice/image/document 类型。\n\n**重要**：仅 noteType 为全局必填，content 字段按 noteType 条件必填：\n- text → textContent\n- link → linkContent\n- voice → voiceContent\n- image → imageContent\n- document → documentContent",
+        "operationId": "post_createNote",
+        "tags": ["笔记接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["noteType"],
+                "properties": {
+                  "noteType": { "type": "string", "description": "笔记类型", "enum": ["voice", "text", "image", "document", "link"] },
+                  "sceneId": { "type": "integer", "format": "int64", "description": "场景 ID（可选）" },
+                  "textContent": {
+                    "type": "object",
+                    "description": "文字笔记内容（noteType=text 时必填）",
+                    "properties": {
+                      "title": { "type": "string", "description": "笔记标题" },
+                      "content": { "type": "string", "description": "文字内容" }
+                    },
+                    "required": ["title", "content"]
+                  },
+                  "voiceContent": {
+                    "type": "object",
+                    "description": "录音笔记内容（noteType=voice 时必填）",
+                    "properties": {
+                      "text": { "type": "string" },
+                      "voiceFileId": { "type": "string" },
+                      "recStartTime": { "type": "string" },
+                      "duration": { "type": "string" },
+                      "imageFileIds": { "type": "array", "items": { "type": "string" }, "description": "随手拍图片列表" },
+                      "appendNoteId": { "type": "string", "description": "追加笔记 ID" }
+                    }
+                  },
+                  "imageContent": {
+                    "type": "object",
+                    "description": "图片笔记内容（noteType=image 时必填）",
+                    "properties": {
+                      "fileIds": { "type": "array", "items": { "type": "object", "required": ["fileId"], "properties": { "fileId": { "type": "string" }, "remark": { "type": "string" } } } }
+                    },
+                    "required": ["fileIds"]
+                  },
+                  "documentContent": {
+                    "type": "object",
+                    "description": "文档笔记内容（noteType=document 时必填）",
+                    "properties": {
+                      "fileId": { "type": "string" },
+                      "fileName": { "type": "string" }
+                    },
+                    "required": ["fileId", "fileName"]
+                  },
+                  "linkContent": {
+                    "type": "object",
+                    "description": "链接笔记内容（noteType=link 时必填）",
+                    "properties": { "url": { "type": "string" } },
+                    "required": ["url"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/createTextNoteSummary": {
+      "post": {
+        "summary": "生成文字笔记总结",
+        "description": "为文字内容生成 AI 总结（返回 SSE 流）。\n\n**注意**：sceneId 此处为 string 类型，与 createNote 的 int64 不一致。",
+        "operationId": "post_createTextNoteSummary",
+        "tags": ["笔记接口"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": { "type": "string", "description": "笔记内容" },
+                  "sceneId": { "type": "string", "description": "场景 ID" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功（SSE 事件流）", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/updateNote": {
+      "post": {
+        "summary": "修改笔记",
+        "description": "修改笔记标题、摘要、总结（不支持正文更新）。\n\ntitle/abstract/summary 全部 required，传空字符串可保留原值。\n\n⚠️ 当前返回 HTTP 404，接口尚未正式开放。",
+        "operationId": "post_updateNote",
+        "tags": ["笔记接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["noteId", "title", "abstract", "summary"],
+                "properties": {
+                  "noteId": { "type": "string", "description": "笔记 ID" },
+                  "title": { "type": "string", "description": "笔记标题（传空字符串保留原值）" },
+                  "abstract": { "type": "string", "description": "笔记摘要（传空字符串保留原值）" },
+                  "summary": { "type": "string", "description": "笔记总结（传空字符串保留原值）" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/deleteNote": {
+      "get": {
+        "summary": "删除笔记",
+        "description": "按笔记 ID 删除笔记。\n\n⚠️ 安全警告：此接口使用 GET 方法执行删除操作，且无恢复机制。",
+        "operationId": "get_deleteNote",
+        "tags": ["笔记接口"],
+        "parameters": [
+          { "name": "noteId", "in": "query", "description": "笔记 ID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/downloadNoteAudio": {
+      "get": {
+        "summary": "下载录音笔记音频",
+        "description": "根据笔记 ID 下载录音笔记的音频文件。单个音频直接返回音频文件，多个音频打包为 ZIP。",
+        "operationId": "get_downloadNoteAudio",
+        "tags": ["笔记接口"],
+        "parameters": [
+          { "name": "noteId", "in": "query", "description": "笔记 ID", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "成功（返回二进制文件）", "content": { "application/zip": { "schema": { "type": "string", "format": "binary" } } } }
+        }
+      }
+    },
+    "/api/v1/note/queryMySceneList": {
+      "get": {
+        "summary": "查询我的场景列表",
+        "description": "返回用户创建或收到的场景模板列表（简单数组 SceneItem[] 格式）。",
+        "operationId": "get_queryMySceneList",
+        "tags": ["笔记接口"],
+        "parameters": [
+          { "name": "includeSharedFlag", "in": "query", "description": "是否包含共享场景", "required": false, "schema": { "type": "boolean", "default": false } }
+        ],
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/queryInnerSceneList": {
+      "get": {
+        "summary": "查询内置场景列表",
+        "description": "返回按分类组织的内置场景数据。格式为 Map 结构：`{ groupCode: SceneItem[], groupInfo: { groupCode: groupName } }`",
+        "operationId": "get_queryInnerSceneList",
+        "tags": ["笔记接口"],
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/queryNoteKnowledge": {
+      "post": {
+        "summary": "查询我创建的笔记集",
+        "description": "查询我创建的笔记集。\n\n**重要**：Content-Type 必须使用 application/json（原文档错误标注为 x-www-form-urlencoded）。",
+        "operationId": "post_queryNoteKnowledge",
+        "tags": ["笔记接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["qryType", "pageNum", "pageSize"],
+                "properties": {
+                  "qryType": { "type": "string", "description": "查询类型，固定值 myCreate", "enum": ["myCreate"] },
+                  "pageNum": { "type": "integer", "description": "页码" },
+                  "pageSize": { "type": "integer", "description": "每页大小" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/queryNoteKnowledgeEmpower": {
+      "post": {
+        "summary": "查询收到的笔记集",
+        "description": "查询他人授权给我的笔记集。\n\n**重要**：Content-Type 必须使用 application/json。\n\n参数说明：\n- qryEmpowerToMe=true → 查询别人授权给我的\n- qryEmpowerFromMe=true → 查询我授权给别人的",
+        "operationId": "post_queryNoteKnowledgeEmpower",
+        "tags": ["笔记接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["qryEmpowerToMe", "qryEmpowerFromMe", "pageNum", "pageSize"],
+                "properties": {
+                  "qryEmpowerToMe": { "type": "boolean", "description": "是否查询授权给我的笔记集" },
+                  "qryEmpowerFromMe": { "type": "boolean", "description": "是否查询我授权出去的笔记集" },
+                  "pageNum": { "type": "integer", "description": "页码" },
+                  "pageSize": { "type": "integer", "description": "每页大小" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/queryNoteKnowledgeDetail": {
+      "post": {
+        "summary": "查询笔记集详情",
+        "description": "查询笔记集详情，包含笔记列表（分页）。\n\n**重要**：Content-Type 必须使用 application/json。",
+        "operationId": "post_queryNoteKnowledgeDetail",
+        "tags": ["笔记接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["knowledgeId", "pageNum", "pageSize"],
+                "properties": {
+                  "knowledgeId": { "type": "string", "description": "笔记集 ID" },
+                  "pageNum": { "type": "integer", "description": "页码" },
+                  "pageSize": { "type": "integer", "description": "每页大小" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/note/queryKnowledgeCardByPage": {
+      "post": {
+        "summary": "分页查询知识卡笔记",
+        "description": "分页查询用户创建的知识卡笔记，每条笔记包含若干问答卡片。",
+        "operationId": "post_queryKnowledgeCardByPage",
+        "tags": ["笔记接口"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pageNum": { "type": "integer", "default": 1 },
+                  "pageSize": { "type": "integer", "default": 10 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/auth/getApiKeyByPassword": {
+      "post": {
+        "summary": "通过口令获取 API Key",
+        "description": "通过手机号+口令获取个人的 API Key。",
+        "operationId": "post_getApiKeyByPassword",
+        "tags": ["auth 接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["phoneNum", "password", "teamId"],
+                "properties": {
+                  "phoneNum": { "type": "string", "description": "手机号" },
+                  "password": { "type": "string", "description": "口令（管理员提供）" },
+                  "teamId": { "type": "integer", "format": "int64", "description": "根团队 ID" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/auth/analysisToken": {
+      "get": {
+        "summary": "解析 Token",
+        "description": "解析用户鉴权令牌。",
+        "operationId": "get_analysisToken",
+        "tags": ["auth 接口"],
+        "parameters": [
+          { "name": "token", "in": "query", "description": "用户鉴权令牌", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/auth/getApiKeyByUserId": {
+      "get": {
+        "summary": "根据 userId 获取 API Key",
+        "operationId": "get_getApiKeyByUserId",
+        "tags": ["auth 接口"],
+        "parameters": [
+          { "name": "userId", "in": "query", "description": "用户 ID", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/team/addTeam": {
+      "post": {
+        "summary": "添加团队",
+        "operationId": "post_addTeam",
+        "tags": ["team 接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["parentTeamId", "teamName", "sortOrder"],
+                "properties": {
+                  "parentTeamId": { "type": "integer", "format": "int64", "description": "父级团队 ID" },
+                  "teamName": { "type": "string", "description": "团队名称" },
+                  "description": { "type": "string", "description": "团队描述" },
+                  "sortOrder": { "type": "integer", "format": "int64", "description": "排序" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/team/updateTeam": {
+      "post": {
+        "summary": "更新团队",
+        "operationId": "post_updateTeam",
+        "tags": ["team 接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["teamId", "teamName", "sortOrder"],
+                "properties": {
+                  "teamId": { "type": "integer", "format": "int64", "description": "团队 ID" },
+                  "teamName": { "type": "string", "description": "团队名称" },
+                  "description": { "type": "string", "description": "团队描述" },
+                  "sortOrder": { "type": "integer", "format": "int64", "description": "排序" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/team/deleteTeam": {
+      "get": {
+        "summary": "删除团队",
+        "description": "删除团队（只能删除没有子团队的团队）。",
+        "operationId": "get_deleteTeam",
+        "tags": ["team 接口"],
+        "parameters": [
+          { "name": "teamId", "in": "query", "description": "团队 ID", "required": true, "schema": { "type": "integer", "format": "int64" } }
+        ],
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/team/queryTeamTree": {
+      "post": {
+        "summary": "查询团队树",
+        "operationId": "post_queryTeamTree",
+        "tags": ["team 接口"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keyword": { "type": "string", "description": "搜索关键词" },
+                  "parentTeamId": { "type": "integer", "format": "int64", "description": "父团队 ID" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/team/queryTeamMemberPage": {
+      "post": {
+        "summary": "查询团队成员列表（分页）",
+        "operationId": "post_queryTeamMemberPage",
+        "tags": ["team 接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["teamId"],
+                "properties": {
+                  "pageNum": { "type": "integer", "description": "页码，默认 1" },
+                  "pageSize": { "type": "integer", "description": "每页数量，默认 20" },
+                  "teamId": { "type": "integer", "format": "int64", "description": "团队 ID" },
+                  "keyword": { "type": "string", "description": "搜索关键词" },
+                  "querySubTeamFlag": { "type": "boolean", "description": "是否查询子团队" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/team/addTeamMember": {
+      "post": {
+        "summary": "添加团队成员",
+        "operationId": "post_addTeamMember",
+        "tags": ["team 接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["teamId", "memberName", "email", "phone"],
+                "properties": {
+                  "teamId": { "type": "integer", "format": "int64", "description": "团队 ID" },
+                  "memberName": { "type": "string", "description": "名称" },
+                  "employeeId": { "type": "string", "description": "工号" },
+                  "email": { "type": "string", "description": "邮箱" },
+                  "phone": { "type": "string", "description": "手机号" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/team/deleteTeamMember": {
+      "get": {
+        "summary": "删除团队成员",
+        "operationId": "get_deleteTeamMember",
+        "tags": ["team 接口"],
+        "parameters": [
+          { "name": "memberId", "in": "query", "description": "团队成员 ID", "required": true, "schema": { "type": "integer", "format": "int64" } }
+        ],
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/file/uploadSingleFile": {
+      "post": {
+        "summary": "文件上传",
+        "description": "单文件上传，可通过 compressFile 控制是否压缩存储。",
+        "operationId": "post_uploadSingleFile",
+        "tags": ["文件接口"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "compressFile": { "type": "boolean", "description": "是否压缩存储" },
+                  "file": { "type": "string", "format": "binary", "description": "上传的文件" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/msg/sendMessage": {
+      "post": {
+        "summary": "发送消息",
+        "operationId": "post_sendMessage",
+        "tags": ["msg 接口"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNum": { "type": "string", "description": "手机号" },
+                  "title": { "type": "string", "description": "消息标题" },
+                  "message": { "type": "string", "description": "消息内容" },
+                  "url": { "type": "string", "description": "跳转地址" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/note/addOrUpdateParamsByCode": {
+      "get": {
+        "summary": "添加或修改问小智 URL 配置",
+        "operationId": "get_addOrUpdateParamsByCode",
+        "tags": ["问小智 接口"],
+        "parameters": [
+          { "name": "teamId", "in": "query", "description": "团队 ID", "required": true, "schema": { "type": "string" } },
+          { "name": "url", "in": "query", "description": "问小智配置链接地址", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    },
+    "/api/v1/know/queryStandardInputOutputByCommand": {
+      "get": {
+        "summary": "按指令查询标准输入输出模板",
+        "description": "按指令查询标准输入输出模板，控制问小智大模型的输入输出格式。",
+        "operationId": "get_queryStandardInputOutputByCommand",
+        "tags": ["问小智 接口"],
+        "parameters": [
+          { "name": "command", "in": "query", "description": "指令", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "成功", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiResponse": {
+        "type": "object",
+        "description": "通用响应结构",
+        "properties": {
+          "resultCode": { "type": "string", "description": "结果编码，\"0\" 表示成功" },
+          "resultMsg": { "type": "string", "description": "结果消息" },
+          "resultObject": { "description": "响应数据（类型因接口而异）" },
+          "stack": { "type": "string", "description": "错误堆栈（通常为空）" },
+          "errorInfos": { "type": "array", "items": {}, "nullable": true },
+          "guidance": { "nullable": true }
+        }
+      },
+      "PageInfo": {
+        "type": "object",
+        "description": "分页信息（基于 PageHelper）",
+        "properties": {
+          "total": { "type": "string", "description": "总记录数（字符串类型）" },
+          "list": { "type": "array", "items": {} },
+          "pageNum": { "type": "integer" },
+          "pageSize": { "type": "integer" },
+          "size": { "type": "integer", "description": "当前页实际记录数" },
+          "pages": { "type": "integer", "description": "总页数" },
+          "isFirstPage": { "type": "boolean" },
+          "isLastPage": { "type": "boolean" },
+          "hasPreviousPage": { "type": "boolean" },
+          "hasNextPage": { "type": "boolean" }
+        }
+      },
+      "NoteListItem": {
+        "type": "object",
+        "description": "笔记列表项",
+        "properties": {
+          "id": { "type": "string", "description": "笔记 ID" },
+          "title": { "type": "string" },
+          "abstract": { "type": "string", "nullable": true },
+          "summary": { "type": "string", "nullable": true },
+          "note_type": { "type": "string", "enum": ["voice", "text", "image", "document", "link"] },
+          "note_state": { "type": "string", "enum": ["completed", "pending", "recognizing", "analyzing", "failed"] },
+          "create_time": { "type": "string" },
+          "scene_name": { "type": "string", "nullable": true },
+          "creator_id": { "type": "string" }
+        }
+      },
+      "SceneItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "场景 ID" },
+          "scene_name": { "type": "string" },
+          "scene_desc": { "type": "string", "nullable": true },
+          "scene_require": { "type": "string", "nullable": true, "description": "场景提示词" }
+        }
+      },
+      "KnowledgeItem": {
+        "type": "object",
+        "description": "笔记集项",
+        "properties": {
+          "knowledgeId": { "type": "string" },
+          "knowledgeName": { "type": "string" },
+          "knowledgeDetail": { "type": "string" },
+          "knowledgeAttribute": { "type": "string", "description": "private/restricted/public" },
+          "knowledgeType": { "type": "string", "description": "person/team" },
+          "contentTotal": { "type": "integer" },
+          "userName": { "type": "string" }
+        }
+      },
+      "KnowledgeCardItem": {
+        "type": "object",
+        "description": "知识卡笔记",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "summary": { "type": "string", "nullable": true },
+          "cards": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string", "description": "问题" },
+                "answer": { "type": "string", "description": "回答" },
+                "remarks": { "type": "string", "description": "详细解读（Markdown）" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "API Key（无需 Bearer 前缀）"
+      }
+    }
+  },
+  "security": [{ "apiKeyAuth": [] }]
+}
