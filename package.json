@@ -1,0 +1,57 @@
+{
+  "name": "open-zzjilu-mcp-server",
+  "version": "1.0.0",
+  "description": "非官方智在记录 MCP Server，为 AI Agent 提供笔记知识库读写能力",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "open-zzjilu-mcp-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "node node_modules/typescript/bin/tsc",
+    "dev": "node node_modules/typescript/bin/tsc --watch",
+    "start": "node dist/index.js",
+    "prepare": "test -d node_modules/typescript && npm run build || true",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "install-skill": "bash scripts/install-skill.sh"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "zhizaijilu",
+    "zzjilu",
+    "ai",
+    "knowledge-base"
+  ],
+  "author": "stelaino",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stelaino/open-zzjilu-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stelaino/open-zzjilu-mcp-server/issues"
+  },
+  "homepage": "https://github.com/stelaino/open-zzjilu-mcp-server#readme",
+  "files": [
+    "dist",
+    "skills",
+    "scripts",
+    "README.md",
+    "README_EN.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "typescript": "^5.5.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "vitest": "^2.0.0"
+  }
+}
